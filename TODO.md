@@ -42,10 +42,10 @@
 - [ ] Verifikasi: API key AI TIDAK PERNAH dipanggil dari client component — cek ulang tiap kali nambah fitur baru
 
 ### 0.3 Akun & Layanan Eksternal
-- [ ] Buat project Supabase baru (khusus project ini, bukan reuse dari hackathon lama)
+- [X] Buat project Supabase baru (khusus project ini, bukan reuse dari hackathon lama)
 - [ ] Buat API key Anthropic (Claude)
-- [ ] Buat API key Google AI Studio (Gemini)
-- [ ] Buat project Vercel, connect ke repo Git
+- [X] Buat API key Google AI Studio (Gemini)
+- [X] Buat project Vercel, connect ke repo Git
 - [ ] (Nanti Phase 5) Buat API key OpenAI khusus Whisper
 
 ---
@@ -53,11 +53,11 @@
 ## PHASE 1 — Database & Schema
 
 ### 1.1 Desain Schema
-- [ ] Buat tabel `topics` (id, name, description, difficulty, created_at)
-- [ ] Buat tabel `vocabulary` (id, topic_id FK, hanzi, pinyin, meaning, example_sentence, created_at)
-- [ ] Buat tabel `exercises` (id, topic_id FK, type, direction [id_to_zh / zh_to_id], question, expected_answer, metadata JSONB, created_at)
-- [ ] Buat tabel `attempts` (id, exercise_id FK, user_answer, input_type [text/voice], is_correct, ai_feedback JSONB, created_at)
-- [ ] Buat tabel `sessions` (id, topic_id FK, started_at, completed_at, score)
+- [X] Buat tabel `topics` (id, name, description, difficulty, created_at)
+- [X] Buat tabel `vocabulary` (id, topic_id FK, hanzi, pinyin, meaning, example_sentence, created_at)
+- [X] Buat tabel `exercises` (id, topic_id FK, type, direction [id_to_zh / zh_to_id], question, expected_answer, metadata JSONB, created_at)
+- [X] Buat tabel `attempts` (id, exercise_id FK, user_answer, input_type [text/voice], is_correct, ai_feedback JSONB, created_at)
+- [X] Buat tabel `sessions` (id, topic_id FK, started_at, completed_at, score)
 - [ ] Tentukan tipe data JSONB dengan jelas untuk `ai_feedback` (samakan dengan schema di brief section 8)
 
 ### 1.2 Setup di Supabase
