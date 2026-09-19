@@ -75,7 +75,18 @@
 ---
 
 ## PHASE 2 — AI Service Layer (Abstraction)
+Notes
+CATATAN PHASE 3 → PHASE 2:
+1. Jumlah soal per sesi masih 3 (dummy data), perlu ditambah jadi 5 
+   sesuai brief section 11 — bisa nambah dummy data atau nunggu 
+   AI generate exercise beneran.
 
+2. Exact match string di submitAnswer() Exercise page itu SEMENTARA. 
+   Kasus nyata: expected_answer "struk / faktur" ditolak kalau user 
+   jawab "faktur" doang, padahal itu jawaban valid. Ini akan 
+   digantikan sepenuhnya oleh evaluateAnswer() dari Claude di Phase 2, 
+   yang memang didesain untuk toleran ke jawaban alternatif yang sah 
+   (brief section 8).
 ### 2.1 Desain Interface
 - [ ] Buat interface `AIService` di `/lib/ai/`:
   ```ts

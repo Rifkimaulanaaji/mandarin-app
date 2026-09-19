@@ -47,6 +47,7 @@ export type Database = {
           id: string
           input_type: string
           is_correct: boolean | null
+          session_id: string | null
           user_answer: string
         }
         Insert: {
@@ -56,6 +57,7 @@ export type Database = {
           id?: string
           input_type: string
           is_correct?: boolean | null
+          session_id?: string | null
           user_answer?: string
         }
         Update: {
@@ -65,6 +67,7 @@ export type Database = {
           id?: string
           input_type?: string
           is_correct?: boolean | null
+          session_id?: string | null
           user_answer?: string
         }
         Relationships: [
@@ -73,6 +76,13 @@ export type Database = {
             columns: ["exercise_id"]
             isOneToOne: false
             referencedRelation: "exercises"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attempts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
             referencedColumns: ["id"]
           },
         ]
