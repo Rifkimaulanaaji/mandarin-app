@@ -29,4 +29,11 @@ export interface AIFeedback {
 export interface AIService {
   generateLesson(topic: string, difficulty: string): Promise<GeneratedLesson>
   evaluateAnswer(question: string, expectedAnswer: string, userAnswer: string): Promise<AIFeedback>
+  evaluateAnswer(
+  question: string,
+  expectedAnswer: string,
+  userAnswer: string,
+  inputType?: 'text' | 'voice'
+): Promise<AIFeedback>
 }
+

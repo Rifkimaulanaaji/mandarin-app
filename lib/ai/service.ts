@@ -111,13 +111,14 @@ disableReasoning: false,
 async function evaluateAnswerWithClaude(
   question: string,
   expectedAnswer: string,
-  userAnswer: string
+  userAnswer: string,
+  inputType: 'text' | 'voice' = 'text'
 ): Promise<AIFeedback> {
   return callAndValidate({
     baseURL: OPENROUTER_URL,
     apiKey: OPENROUTER_KEY,
     model: 'anthropic/claude-haiku-4.5',
-    prompt: buildEvaluatePrompt(question, expectedAnswer, userAnswer),
+    prompt: buildEvaluatePrompt(question, expectedAnswer, userAnswer, inputType),
     schema: aiFeedbackSchema,
     context: 'evaluateAnswer via Claude',
     attempts: 2,

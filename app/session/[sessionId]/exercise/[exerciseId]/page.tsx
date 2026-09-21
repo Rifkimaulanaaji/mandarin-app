@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { aiService } from '@/lib/ai/service'
 import { isExactMatch } from '@/lib/answer-match'
 import type { AIFeedback } from '@/lib/ai/types'
+import AnswerField from '@/components/AnswerField'
 import SubmitButton from './SubmitButton'
 
 // Server action ikut batas durasi route ini; panggilan AI bisa lambat
@@ -54,8 +55,6 @@ export default async function ExercisePage({
     redirect(`/session/${sessionId}/exercise/${exerciseId}/feedback?attemptId=${existingId}`)
   }
 
-  // Ambil nilai ke konstanta biasa supaya closure server action
-  // tidak butuh non-null assertion (exercise!)
   const question = exercise.question
   const expectedAnswer = exercise.expected_answer
 
@@ -64,6 +63,7 @@ export default async function ExercisePage({
 
     const raw = formData.get('answer')
     const userAnswer = typeof raw === 'string' ? raw.trim().slice(0, MAX_ANSWER_LENGTH) : ''
+    const inputType = formData.get('input_type') === 'voice' ? 'voice' : 'text'
 
     const backUrl = (extra: Record<string, string>) =>
       `/session/${sessionId}/exercise/${exerciseId}?${new URLSearchParams(extra).toString()}`
@@ -92,7 +92,12 @@ export default async function ExercisePage({
       }
     } else {
       try {
-        const result = await aiService.evaluateAnswer(question, expectedAnswer, userAnswer)
+        const result = await aiService.evaluateAnswer(
+          question,
+          expectedAnswer,
+          userAnswer,
+          inputType
+        )
         // Override: teks jawaban user harus persis input asli, bukan versi AI
         feedback = { ...result, user_answer: userAnswer }
       } catch (err) {
@@ -110,7 +115,7 @@ export default async function ExercisePage({
         exercise_id: exerciseId,
         session_id: sessionId,
         user_answer: userAnswer,
-        input_type: 'text',
+        input_type: inputType,
         is_correct: feedback.is_correct,
         ai_feedback: feedback,
       })
@@ -143,17 +148,7 @@ export default async function ExercisePage({
       {errorParam === 'empty' && <p role="alert">Jawaban tidak boleh kosong.</p>}
 
       <form action={submitAnswer}>
-        <input
-          type="text"
-          name="answer"
-          required
-          maxLength={MAX_ANSWER_LENGTH}
-          defaultValue={draft ?? ''}
-          placeholder="Ketik jawabanmu..."
-        />
-        <button type="button" disabled>
-          🎤 (Segera Hadir)
-        </button>
+        <AnswerField defaultValue={draft ?? ''} maxLength={MAX_ANSWER_LENGTH} />
         <SubmitButton />
       </form>
     </div>

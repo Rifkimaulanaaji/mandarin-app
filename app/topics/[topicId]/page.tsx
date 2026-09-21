@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
+import AudioButton from '@/components/AudioButton'
 
 export default async function LearningMaterialPage({
   params,
@@ -39,19 +40,19 @@ export default async function LearningMaterialPage({
       <ul>
         {vocabulary?.map((v) => (
           <li key={v.id}>
-            <strong>{v.hanzi}</strong> ({v.pinyin}) — {v.meaning}
+            <strong>{v.hanzi}</strong> ({v.pinyin}) <AudioButton text={v.hanzi} /> — {v.meaning}
             {v.example_sentence && (
-  <p>
-    {v.example_sentence}
-    {v.example_pinyin && ` (${v.example_pinyin})`}
-    {v.example_translation && (
-      <>
-        <br />
-        <small>{v.example_translation}</small>
-      </>
-    )}
-  </p>
-)}
+              <p>
+                {v.example_sentence} <AudioButton text={v.example_sentence} />
+                {v.example_pinyin && ` (${v.example_pinyin})`}
+                {v.example_translation && (
+                  <>
+                    <br />
+                    <small>{v.example_translation}</small>
+                  </>
+                )}
+              </p>
+            )}
           </li>
         ))}
       </ul>

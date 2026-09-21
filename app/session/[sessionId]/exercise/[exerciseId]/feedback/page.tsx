@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import type { Attempt } from '@/lib/types/db-helpers'
+import AudioButton from '@/components/AudioButton'
 
 export default async function FeedbackPage({
   params,
@@ -64,7 +65,10 @@ export default async function FeedbackPage({
       <h1>{attempt.is_correct ? '✅ Benar!' : '❌ Belum Tepat'}</h1>
 
       <p>Jawabanmu: {attempt.user_answer}</p>
-      <p>Jawaban yang benar: {feedback?.corrected_answer}</p>
+      <p>
+        Jawaban yang benar: {feedback?.corrected_answer}{' '}
+        {feedback?.corrected_answer && <AudioButton text={feedback.corrected_answer} />}
+      </p>
       <p>{feedback?.explanation}</p>
 
       {feedback?.mistakes && feedback.mistakes.length > 0 && (
