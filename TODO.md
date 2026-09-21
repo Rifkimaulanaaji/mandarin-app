@@ -2,267 +2,186 @@
 
 > Dibuat berdasarkan brief project + keputusan yang sudah difinalkan.
 > Target: 7 hari development, deploy Vercel + Supabase.
-> Stack: Next.js + Supabase (Postgres) + Claude (evaluasi) + Gemini Flash (generate konten) + Whisper API (voice, fase akhir).
+> Stack (revisi): Next.js + Supabase + Claude Haiku 4.5 via OpenRouter (evaluasi) + GLM-4.5 via OpenRouter, fallback z.ai (generate konten) + Whisper API (STT, Phase 4) + speechSynthesis browser (TTS, Phase 4).
 
 ---
 
 ## PHASE 0 — Project Setup & Foundation
-
-### 0.1 Repo & Tooling
-- [X] Init repo Git (buat dari awal, jangan mulai coding tanpa version control)
-- [X] `.gitignore` mencakup: `.env*`, `node_modules`, `.next`, `.vercel`
-- [X] Setup Next.js project (App Router, TypeScript diaktifkan)
-- [X] Setup Tailwind CSS
-- [X] Setup ESLint + Prettier (konsistensi kode, penting kalau vibe coding biar gak berantakan)
-- [X] Setup struktur folder awal:
-  ```
-  /app
-    /api
-    /(routes halaman)
-  /components
-  /lib
-    /ai         <- AIService abstraction
-    /supabase   <- client & queries
-  /types
-  /prisma atau /supabase (schema)
-  ```
-- [X] Buat `README.md` dasar (cara run lokal, env vars yang dibutuhkan)
-
-### 0.2 Environment & Secrets
-- [X] Buat `.env.local` (JANGAN commit ke git)
-- [X] Daftar env vars yang dibutuhkan didokumentasikan di `.env.example`:
-  ```
-  NEXT_PUBLIC_SUPABASE_URL=
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=
-  SUPABASE_SERVICE_ROLE_KEY=
-  ANTHROPIC_API_KEY=
-  GOOGLE_AI_API_KEY=
-  OPENAI_API_KEY=          # buat Whisper, fase akhir
-  ```
-- [ ] Verifikasi: API key AI TIDAK PERNAH dipanggil dari client component — cek ulang tiap kali nambah fitur baru
-
-### 0.3 Akun & Layanan Eksternal
-- [X] Buat project Supabase baru (khusus project ini, bukan reuse dari hackathon lama)
-- [ ] Buat API key Anthropic (Claude)
-- [X] Buat API key Google AI Studio (Gemini)
-- [X] Buat project Vercel, connect ke repo Git
-- [ ] (Nanti Phase 5) Buat API key OpenAI khusus Whisper
-
----
+(tidak diubah; centang sendiri yang belum)
 
 ## PHASE 1 — Database & Schema
-
-### 1.1 Desain Schema
-- [X] Buat tabel `topics` (id, name, description, difficulty, created_at)
-- [X] Buat tabel `vocabulary` (id, topic_id FK, hanzi, pinyin, meaning, example_sentence, created_at)
-- [X] Buat tabel `exercises` (id, topic_id FK, type, direction [id_to_zh / zh_to_id], question, expected_answer, metadata JSONB, created_at)
-- [X] Buat tabel `attempts` (id, exercise_id FK, user_answer, input_type [text/voice], is_correct, ai_feedback JSONB, created_at)
-- [X] Buat tabel `sessions` (id, topic_id FK, started_at, completed_at, score)
-- [ ] Tentukan tipe data JSONB dengan jelas untuk `ai_feedback` (samakan dengan schema di brief section 8)
-
-### 1.2 Setup di Supabase
-- [ ] Jalankan migration/SQL untuk semua tabel di atas
-- [ ] Set Row Level Security (RLS):
-  - [ ] Karena single-user tanpa auth: matikan akses publik langsung ke tabel sensitif dari `anon` key
-  - [ ] Semua write/read yang penting lewat API Route pakai `service_role` key (server-side only)
-  - [ ] Kalau ada read langsung dari client (misal list topics), pastikan itu data yang aman untuk publik
-- [ ] Test koneksi Supabase dari Next.js (buat 1 API route sederhana `/api/health` yang query DB, pastikan konek)
-
-### 1.3 Type Safety
-- [ ] Generate TypeScript types dari schema Supabase (`supabase gen types typescript`)
-- [ ] Buat types manual untuk struktur `ai_feedback` JSON (is_correct, mistakes[], explanation, alternative_answers[])
+(tidak diubah; centang sendiri yang belum)
+- Tambahan dari Phase 2: kolom `vocabulary.example_pinyin` dan `vocabulary.example_translation` (nullable)
+- Tambahan dari Phase 2: `exercises_type_check` diperluas (lihat catatan)
+- Tambahan dari Phase 3: unique index `attempts_session_exercise_uniq` (session_id, exercise_id)
 
 ---
 
-## PHASE 2 — AI Service Layer (Abstraction)
+## PHASE 2 — AI Service Layer (Abstraction) ✅ SELESAI
+
 Notes
 CATATAN PHASE 3 → PHASE 2:
-1. Jumlah soal per sesi masih 3 (dummy data), perlu ditambah jadi 5 
-   sesuai brief section 11 — bisa nambah dummy data atau nunggu 
-   AI generate exercise beneran.
+1. [X] Jumlah soal per sesi: sekarang 11 soal per topik (5 recognition, 2 production, 4 sentence translation), dihasilkan lewat kode, bukan dummy
+2. [X] Exact match di submitAnswer() diganti evaluateAnswer(); exact match tetap dipakai HANYA sebagai shortcut hemat AI kalau jawaban persis sama dengan referensi ("struk / faktur" sekarang menerima "faktur")
 
-2. Exact match string di submitAnswer() Exercise page itu SEMENTARA. 
-   Kasus nyata: expected_answer "struk / faktur" ditolak kalau user 
-   jawab "faktur" doang, padahal itu jawaban valid. Ini akan 
-   digantikan sepenuhnya oleh evaluateAnswer() dari Claude di Phase 2, 
-   yang memang didesain untuk toleran ke jawaban alternatif yang sah 
-   (brief section 8).
 ### 2.1 Desain Interface
-- [ ] Buat interface `AIService` di `/lib/ai/`:
-  ```ts
-  generateLesson(topic: string, difficulty: string): Promise<LessonContent>
-  generateExercise(topic: string, direction: string): Promise<Exercise>
-  evaluateAnswer(exercise: Exercise, userAnswer: string): Promise<AIFeedback>
-  explainMistake(feedback: AIFeedback): Promise<string>  // atau digabung ke evaluateAnswer
-  ```
-- [ ] Implementasi provider Claude (`/lib/ai/providers/claude.ts`) — dipakai untuk `evaluateAnswer`
-- [ ] Implementasi provider Gemini (`/lib/ai/providers/gemini.ts`) — dipakai untuk `generateLesson`, `generateExercise`
-- [ ] Buat factory/config yang nentuin provider mana dipakai untuk fungsi apa (biar gampang swap nanti)
+- [X] Buat interface `AIService` di `/lib/ai/` (dua fungsi: `generateLesson`, `evaluateAnswer`)
+  - generateExercise DIBUANG: soal diturunkan dari vocab lewat kode (`lib/exercises/build.ts`), tanpa biaya AI
+  - explainMistake DIGABUNG ke evaluateAnswer
+- [X] Implementasi provider Claude → diganti satu file generik `providers/openai-compatible.ts` (OpenRouter, model Claude Haiku 4.5)
+- [X] Implementasi provider Gemini → diganti GLM-4.5 via OpenRouter, fallback z.ai
+- [X] Config provider per fungsi ada di `service.ts` (gampang swap)
 
 ### 2.2 Prompt Engineering
-- [ ] Tulis system prompt untuk `generateLesson`:
-  - [ ] Eksplisit: Traditional Chinese characters (繁體字)
-  - [ ] Eksplisit: gaya Taiwan Mandarin, hindari istilah khas Mainland kalau ada perbedaan umum
-  - [ ] Level: Intermediate (konfirmasi HSK level kalau sudah dapat info)
-  - [ ] Fokus: kosakata + kalimat kontekstual praktis, bukan entri kamus terisolasi
-- [ ] Tulis system prompt untuk `generateExercise`:
-  - [ ] Dukung dua arah: ID→Mandarin dan Mandarin→ID
-  - [ ] Variasi tipe: recognition, comprehension, typing production
-- [ ] Tulis system prompt untuk `evaluateAnswer` — INI PALING KRITIS:
-  - [ ] Instruksikan AI untuk tidak terlalu strict
-  - [ ] Instruksikan mengenali jawaban alternatif yang valid
-  - [ ] Instruksikan output HARUS dalam format JSON sesuai schema (is_correct, user_answer, corrected_answer, mistakes[], alternative_answers[], explanation)
-  - [ ] Instruksikan penjelasan dalam Bahasa Indonesia yang sederhana
-  - [ ] Instruksikan AI untuk TIDAK mengarang aturan grammar yang tidak ada
-- [ ] Simpan semua prompt di file terpisah (`/lib/ai/prompts.ts`) — jangan hardcode inline, biar gampang diiterasi
+- [X] System prompt `generateLesson`:
+  - [X] Eksplisit: Traditional Chinese characters (繁體字)
+  - [X] Eksplisit: gaya Taiwan Mandarin, hindari istilah Mainland (contoh 捷運, 腳踏車)
+  - [X] Level: REVISI jadi beginner (HSK 1-2), bukan intermediate
+  - [X] Fokus: kosakata + kalimat kontekstual (dengan example_pinyin dan example_translation)
+- [X] System prompt `generateExercise` → digantikan `buildExercises()` (tanpa AI)
+  - [X] Dua arah ID→Mandarin dan Mandarin→ID
+  - [X] Variasi tipe: vocab_recognition, vocab_production, sentence_translation
+- [X] System prompt `evaluateAnswer`:
+  - [X] Tidak terlalu strict
+  - [X] Mengenali jawaban alternatif yang valid
+  - [X] Output JSON sesuai schema
+  - [X] Penjelasan Bahasa Indonesia sederhana
+  - [X] Tidak mengarang aturan grammar
+  - [X] Tambahan: aturan typo (benar tapi diingatkan ramah), batas panjang penjelasan, tidak membandingkan dengan referensi kalau sudah benar
+- [X] Semua prompt di `/lib/ai/prompts.ts`
 
 ### 2.3 Validasi Output AI
-- [ ] Buat validator (misal pakai Zod) untuk response JSON dari AI sebelum dipercaya frontend
-- [ ] Handle kasus: AI return JSON tidak valid / field hilang / format aneh
-- [ ] Tambahkan retry logic sederhana (1x retry kalau parsing gagal) sebelum fallback ke error message
-- [ ] Buat fallback response yang aman kalau AI call gagal total (misal: "Terjadi kesalahan, coba lagi")
+- [X] Validator Zod untuk response AI
+- [X] Handle JSON tidak valid / field hilang / format aneh
+- [X] Retry (2 percobaan) sebelum error
+- [X] Fallback saat AI gagal total: BUKAN feedback "salah" palsu; user dikembalikan ke form dengan jawaban terisi dan attempt tidak disimpan
 
-### 2.4 Testing AI Layer (Manual, sebelum lanjut ke UI)
-- [ ] Test `generateLesson` dengan beberapa topik (belanja, interaksi sosial)
-- [ ] Test `evaluateAnswer` dengan kasus: jawaban benar, salah total, salah grammar, benar tapi alternatif, kosong
-- [ ] Review manual: apakah karakternya beneran Traditional? Apakah gaya bahasanya masuk akal buat Taiwan?
+### 2.4 Testing AI Layer
+- [X] Test `generateLesson` dengan beberapa topik (naik MRT, makan bersama, makan)
+- [X] Test `evaluateAnswer`: benar, salah total, alternatif/sinonim, kosong, typo, jawaban romanji
+- [X] Review manual: aksara Traditional dan gaya Taiwan (kualitas vocab membaik setelah prompt diperketat)
 
 ---
 
 ## PHASE 3 — Core Prototype (Alur Teks End-to-End)
 
 ### 3.1 Topic Selection
-- [ ] Halaman/komponen pilih topik (list topik yang sudah ada + input topik baru custom)
-- [ ] API Route: `POST /api/topics/generate` → panggil `generateLesson`, simpan ke DB (vocabulary + contoh kalimat)
-- [ ] API Route: `GET /api/topics` → list topik yang sudah pernah dibuat (cache, gak generate ulang)
-- [ ] Handle: topik yang sama diminta lagi → reuse dari DB, jangan generate ulang (cost awareness)
+- [X] Halaman pilih topik (list + input topik baru)
+- [X] Generate topik (server action `createTopic`, bukan API route)
+- [X] List topik (server component)
+- [ ] Topik yang sama diminta lagi → reuse dari DB (BELUM; sekarang membuat topik duplikat)
 
 ### 3.2 Tampilan Materi Belajar
-- [ ] Komponen tampilkan vocabulary: Hanzi (font yang jelas), Pinyin, arti Indonesia
-- [ ] Komponen tampilkan contoh kalimat kontekstual (multiple context per vocab item)
-- [ ] Pastikan font Traditional Chinese render dengan benar di browser (test di mobile juga)
+- [X] Komponen vocabulary: Hanzi, Pinyin, arti Indonesia
+- [X] Contoh kalimat + pinyin + terjemahan (satu kalimat per kata; multi-konteks ditunda)
+- [ ] Font Traditional Chinese dicek di mobile
 
 ### 3.3 Exercise — Typing
-- [ ] Generate exercise dari topik terpilih (`POST /api/exercises/generate` atau bagian dari topic generate)
-- [ ] UI input teks untuk jawaban (support input Hanzi — pastikan user bisa ketik atau paste karakter Mandarin)
-- [ ] API Route: `POST /api/exercises/evaluate` → panggil `evaluateAnswer`, simpan attempt ke DB
-- [ ] Tampilkan hasil feedback terstruktur: benar/salah, jawaban user, jawaban benar, penjelasan kesalahan
+- [X] Generate exercise dari topik (buildExercises)
+- [X] UI input teks
+- [X] Evaluate + simpan attempt (server action)
+- [X] Feedback terstruktur (benar/salah, jawaban user, jawaban benar, mistakes, alternatif, penjelasan)
 
 ### 3.4 Session Flow
-- [ ] Buat alur: mulai sesi → beberapa exercise berurutan → selesai sesi
-- [ ] Simpan `sessions` dan `attempts` ke DB
-- [ ] Halaman hasil sesi sederhana (jumlah benar/salah, ringkasan)
+- [X] Mulai sesi → exercise berurutan → selesai
+- [X] Simpan sessions dan attempts
+- [X] Halaman hasil sesi (benar dari total, skor)
 
-### 3.5 Error Handling Dasar (Wajib, Bukan Opsional)
-- [ ] Handle: jawaban kosong disubmit
-- [ ] Handle: AI API gagal/timeout — tampilkan pesan error yang jelas, jangan silent fail
-- [ ] Handle: network error di client (loading state, retry button)
-- [ ] Handle: user submit berkali-kali cepat (debounce/disable button saat proses)
-- [ ] Handle: topik/exercise tidak ditemukan (404 state)
+### 3.5 Error Handling Dasar
+- [X] Jawaban kosong
+- [X] AI gagal/timeout (pesan jelas, jawaban tidak hilang)
+- [ ] Network error di client (loading state global, retry)
+- [X] Submit berkali-kali (tombol disabled + guard server + unique index)
+- [X] Topik/exercise tidak ditemukan (404)
 
 ### 3.6 Milestone Check
-- [ ] Test end-to-end: pilih topik baru → materi muncul → jawab exercise → dapat feedback → sesi selesai
-- [ ] Pastikan ini jalan mulus di localhost SEBELUM lanjut ke fitur berikutnya
+- [X] Test end-to-end: buat topik → materi → jawab → feedback → hasil sesi
 
 ---
 
-## PHASE 4 — Voice (STT) — Dikerjakan Setelah Phase 3 Stabil
+## PHASE 4 — Voice (STT + TTS) — Dikerjakan Setelah Phase 3 Stabil
 
-### 4.1 Riset & Testing Provider (Sebelum Implementasi)
-- [ ] Kumpulkan beberapa sample rekaman suara asli dari temanmu (kalimat Mandarin sehari-hari, Traditional/Taiwan accent)
-- [ ] Test sample-sample itu ke Whisper API — catat akurasi transkrip
-- [ ] (Opsional pembanding) Test ke Azure Speech real-time — bandingkan hasil
-- [ ] Putuskan provider final berdasarkan hasil nyata, bukan asumsi
+### 4.0 Audio Output / TTS (dipindah dari rencana terpisah)
+- [ ] `AudioButton` (speechSynthesis, zh-TW, rate 0.8) di Learning Material (kata + kalimat contoh)
+- [ ] `AudioButton` di halaman feedback (dengar jawaban yang benar)
+- [ ] Tes di HP asli temanmu: apakah suara zh-TW tersedia (iOS dan Android beda)
+- [ ] Kalau tidak ada suara, tombol tersembunyi (jangan error)
+- [ ] (Cadangan kalau kualitas kurang) TTS pra-generate (Azure/Google) disimpan di Supabase Storage
+
+### 4.1 Riset & Testing Provider STT (Sebelum Implementasi)
+- [ ] Kumpulkan sample rekaman suara asli temanmu (kalimat Mandarin sehari-hari, aksen Taiwan)
+- [ ] Test ke Whisper API — catat akurasi transkrip
+- [ ] Cek: apakah output aksara Traditional atau Simplified (uji parameter language dan prompt aksara tradisional)
+- [ ] (Opsional) Bandingkan Azure Speech
+- [ ] Putuskan provider final berdasarkan hasil nyata
 
 ### 4.2 Implementasi
-- [ ] UI rekam suara (microphone permission, indikator sedang merekam)
-- [ ] Kirim audio ke API Route (`POST /api/speech/transcribe`)
-- [ ] API Route panggil Whisper (atau provider terpilih) → dapat teks
-- [ ] Reuse endpoint `evaluateAnswer` yang sama dengan exercise typing (teks hasil transkrip diperlakukan sama)
-- [ ] Tampilkan ke user: hasil transkrip yang terdeteksi (biar dia bisa cek sendiri kalau STT salah dengar) + feedback AI
+- [ ] UI rekam suara (izin mic, indikator merekam) — ganti tombol 🎤 placeholder di Exercise page
+- [ ] `POST /api/speech/transcribe` (atau server action)
+- [ ] Panggil Whisper → teks
+- [ ] Reuse evaluateAnswer; simpan attempt dengan input_type 'voice'
+- [ ] Tampilkan transkrip yang terdeteksi + feedback AI
+- [ ] Sesuaikan prompt evaluator untuk jawaban voice (lihat notes)
 
 ### 4.3 Error Handling Voice
-- [ ] Handle: permission microphone ditolak
-- [ ] Handle: audio kosong/hening
-- [ ] Handle: audio terlalu pendek/terlalu panjang
-- [ ] Handle: gagal upload audio (network)
-- [ ] Handle: STT API gagal/timeout
-- [ ] Validasi ukuran file audio sebelum upload (jangan biarkan file raksasa)
+- [ ] Izin mic ditolak
+- [ ] Audio kosong/hening
+- [ ] Audio terlalu pendek/panjang
+- [ ] Gagal upload
+- [ ] STT gagal/timeout
+- [ ] Validasi ukuran file audio
 
 ### 4.4 Testing Voice
-- [ ] Test dengan pengucapan jelas
-- [ ] Test dengan noise background
-- [ ] Test dengan jawaban pendek vs panjang
-- [ ] Review manual: apakah transkrip cukup akurat untuk dipakai evaluasi?
+- [ ] Pengucapan jelas
+- [ ] Noise background
+- [ ] Jawaban pendek vs panjang
+- [ ] Review manual akurasi transkrip
 
 ---
 
 ## PHASE 5 — Progress & Persistence
-
-- [ ] Halaman riwayat sesi (list sesi sebelumnya, tanggal, skor)
-- [ ] Tampilkan progress dasar: topik yang sudah dipelajari, jumlah vocabulary yang sudah dilatih
-- [ ] (Should have) Fitur retry exercise yang salah
-- [ ] Pastikan data attempt tersimpan dengan benar untuk dipakai analisis manual nanti kalau perlu
-
----
+- [ ] Halaman riwayat sesi
+- [ ] Progress dasar
+- [ ] (Should have) Retry exercise yang salah — ingat: unique index attempts perlu dilonggarkan
+- [ ] Data attempt tersimpan benar untuk analisis
 
 ## PHASE 6 — UI/UX Polish & PWA
-
-### 6.1 Mobile-First Polish
-- [ ] Review semua halaman di viewport mobile (bukan cuma desktop resize)
-- [ ] Pastikan font Hanzi cukup besar dan jelas dibaca di layar kecil
-- [ ] Loading states di semua proses async (generate topik, evaluate jawaban, upload voice)
-- [ ] Error states yang jelas dan actionable (bukan cuma "Error" doang)
-- [ ] Navigasi minimal dan jelas antar 6 layar utama (Home, Topic Selection, Learning Material, Exercise, Feedback, Session Result)
-
-### 6.2 PWA (Installable Web App)
-- [ ] Buat `manifest.json` (nama app, icon, theme color, display: standalone)
-- [ ] Buat icon app (berbagai ukuran sesuai kebutuhan PWA)
-- [ ] Setup service worker dasar (minimal untuk installability, gak perlu full offline-first)
-- [ ] Test "Add to Home Screen" di HP (Android Chrome & iOS Safari — perilakunya beda-beda, test dua-duanya kalau memungkinkan)
-- [ ] Pastikan app terasa "native-like" saat dibuka dari home screen (no browser chrome)
-
----
+- [ ] Review mobile
+- [ ] Font Hanzi besar dan jelas
+- [ ] Loading states (generate topik, evaluate, upload voice) — TERMASUK tombol "Buat Topik Baru" (proses 10-60 detik tanpa indikator; pertimbangkan ditarik maju)
+- [ ] Error states actionable
+- [ ] Navigasi 6 layar utama
+- [ ] PWA: manifest, icon, service worker, test Add to Home Screen (Android dan iOS)
 
 ## PHASE 7 — Security & Reliability Review
-
-### 7.1 Security Checklist
-- [ ] Pastikan TIDAK ADA API key AI yang exposed di kode frontend/client bundle (cek `NEXT_PUBLIC_*` prefix, jangan taruh key rahasia di situ)
-- [ ] Cek RLS Supabase sudah benar, gak ada tabel yang bisa diakses/ditulis publik tanpa kontrol
-- [ ] Validasi semua input user sebelum diproses (jangan trust input mentah)
-- [ ] Rate limiting sederhana di API routes yang manggil AI (cegah biaya membengkak kalau ada bug infinite loop / abuse)
-- [ ] Jangan log API key atau data sensitif ke console/log production
-- [ ] Validasi file audio (tipe file, ukuran) sebelum diproses ke STT
-
-### 7.2 Reliability Checklist
-- [ ] Semua API call ke AI provider punya timeout & error handling eksplisit
-- [ ] Semua response AI divalidasi sebelum dipakai (tidak trust blind terhadap format JSON)
-- [ ] Test skenario: refresh halaman di tengah sesi (apakah data ke-save atau hilang?)
-- [ ] Test skenario: koneksi lambat (loading state gak infinite/stuck)
-
-### 7.3 Cost Monitoring
-- [ ] Tambahkan logging sederhana: berapa kali AI dipanggil per sesi (bisa cukup console log / simpan counter di DB)
-- [ ] Cek dashboard usage Anthropic, Google AI, dan (nanti) OpenAI secara berkala selama testing
-
----
+- [ ] Tidak ada API key di client bundle
+- [ ] RLS Supabase benar
+- [ ] Validasi input user
+- [ ] Rate limiting di endpoint/aksi yang memanggil AI (WAJIB: tanpa auth, siapa pun yang tahu URL bisa memicu biaya)
+- [ ] Tidak log API key; kurangi dump response AI ke log
+- [ ] Validasi file audio
+- [ ] Semua panggilan AI punya timeout dan error handling (sudah untuk lesson dan evaluate; audit ulang)
+- [ ] Test refresh di tengah sesi
+- [ ] Test koneksi lambat
+- [ ] Test kegagalan saat membuat topik dengan API key salah (tidak boleh ada topik setengah jadi)
+- [ ] Test regresi topik lama (tanpa example_translation)
+- [ ] Logging biaya per sesi (usage dari OpenRouter menyertakan cost)
+- [ ] Cek dashboard usage secara berkala
 
 ## PHASE 8 — Deployment
-
-- [ ] Push semua env vars ke Vercel (Project Settings → Environment Variables)
-- [ ] Deploy ke Vercel, cek build sukses tanpa error
-- [ ] Test versi production (bukan cuma localhost) — buka dari HP asli
-- [ ] Test install PWA dari versi production
-- [ ] Cek Supabase connection dari environment production (bukan cuma lokal)
-- [ ] Test ulang seluruh flow end-to-end di production: topic → materi → exercise teks → voice → hasil sesi
-
----
+- [ ] Env vars ke Vercel (OPENROUTER_API_KEY, ZAI_API_KEY, kunci Supabase, OPENAI_API_KEY untuk Whisper)
+- [ ] Cek maxDuration sesuai batas plan Vercel
+- [ ] Deploy dan cek build
+- [ ] Test production dari HP asli
+- [ ] Test install PWA production
+- [ ] Cek koneksi Supabase production
+- [ ] Test ulang end-to-end di production (topic → materi → teks → voice → hasil)
 
 ## PHASE 9 — Handoff ke Temanmu
-
-- [ ] Siapkan instruksi singkat cara pakai (cara buka, cara install ke home screen, cara mulai sesi)
-- [ ] Kasih tau dia kalau ini masih tahap testing — minta feedback spesifik (bukan cuma "gimana", tapi soal akurasi koreksi AI, soal STT, soal kecukupan materi)
-- [ ] Siapkan cara dia kasih feedback balik ke kamu (chat langsung, atau form sederhana)
-- [ ] Sepakati siapa yang pegang biaya jalan (Vercel + Supabase + AI usage) — sesuai kesepakatan awal kamu yang pegang, dananya dari dia
+- [ ] Instruksi singkat pemakaian
+- [ ] Beri tahu ini masih tahap testing; minta feedback spesifik (akurasi koreksi, STT, kecukupan materi, tingkat kesulitan, apakah butuh mekanik puzzle)
+- [ ] Cara dia kirim feedback
+- [ ] Sepakati siapa pegang biaya
 
 ---
 
@@ -273,25 +192,16 @@ CATATAN PHASE 3 → PHASE 2:
 | Karakter | Traditional Chinese (繁體) |
 | Bahasa/Aksen | Mandarin standar gaya Taiwan |
 | Arah exercise | Dua arah (ID↔Mandarin) |
-| Level | Intermediate (ada sertifikat/dasar) |
-| Topik awal | Interaksi sosial, belanja |
+| Level | REVISI: beginner (HSK 1, baru beberapa minggu di Taiwan) |
+| Input jawaban | Ketik dan voice (eksplisit dari teman). Puzzle/balok ditunda sampai hasil testing 1 minggu |
+| Tipe soal per topik | 5 vocab_recognition, 2 vocab_production, 4 sentence_translation (11 soal). sentence_construction dihapus dulu |
 | Frontend | Next.js + Tailwind |
-| Backend | Next.js API Routes |
-| Database | Supabase (Postgres) |
-| AI evaluasi | Claude |
-| AI generate konten | Gemini Flash |
-| STT | Ditunda ke Phase 4, evaluasi Whisper vs Azure dengan sample nyata |
+| Backend | Server actions + route handler Next.js |
+| Database | Supabase (Postgres), tanpa ORM |
+| AI evaluasi | Claude Haiku 4.5 via OpenRouter |
+| AI generate konten | GLM-4.5 via OpenRouter, fallback z.ai |
+| STT | Whisper, ditunda ke Phase 4 dengan tes sample suara asli |
+| TTS | speechSynthesis browser (gratis), cadangan TTS pra-generate |
 | Auth | Tidak ada (single-user) |
 | Deployment | Vercel |
-| PWA | Ya, installable, bukan native app |
-
----
-
-## Catatan Vibe Coding
-
-Karena kamu kemungkinan bakal generate banyak kode cepat dengan AI assistance, beberapa pengingat penting biar tetap standar industri:
-
-- Jangan skip Phase 0 (setup env, gitignore, struktur folder) meskipun terasa membosankan — ini yang mencegah API key ke-leak ke git history.
-- Selalu commit per milestone kecil, jangan satu commit besar di akhir — kalau ada bug, gampang di-trace balik.
-- Review output AI-generated code sebelum dipakai, terutama bagian yang menyentuh: validasi input, RLS Supabase, dan API key handling — ini tiga area paling rawan kalau asal terima kode tanpa baca.
-- Jangan biarkan AI assistant "menyelesaikan semuanya sekaligus" — ikuti urutan fase di atas, testing tiap milestone sebelum lanjut, sesuai prinsip incremental development di brief.
+| PWA | Ya, installable |

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function HomePage() {
-  return <div>Home — TODO: tombol ke /topics</div>
+  return  <Link href="/topics">Pilih Topik</Link>
 }

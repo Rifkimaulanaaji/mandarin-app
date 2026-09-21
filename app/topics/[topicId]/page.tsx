@@ -40,7 +40,18 @@ export default async function LearningMaterialPage({
         {vocabulary?.map((v) => (
           <li key={v.id}>
             <strong>{v.hanzi}</strong> ({v.pinyin}) — {v.meaning}
-            {v.example_sentence && <p>{v.example_sentence}</p>}
+            {v.example_sentence && (
+  <p>
+    {v.example_sentence}
+    {v.example_pinyin && ` (${v.example_pinyin})`}
+    {v.example_translation && (
+      <>
+        <br />
+        <small>{v.example_translation}</small>
+      </>
+    )}
+  </p>
+)}
           </li>
         ))}
       </ul>
