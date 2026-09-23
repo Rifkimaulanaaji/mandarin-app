@@ -3,10 +3,8 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { aiService } from '@/lib/ai/service'
 import { isExactMatch } from '@/lib/answer-match'
 import type { AIFeedback } from '@/lib/ai/types'
-import AnswerField from '@/components/AnswerField'
-import SubmitButton from './SubmitButton'
+import ExerciseForm, { type SubmitResult } from '@/components/ExerciseForm'
 
-// Server action ikut batas durasi route ini; panggilan AI bisa lambat
 export const maxDuration = 30
 
 const MAX_ANSWER_LENGTH = 300
@@ -25,6 +23,23 @@ async function findExistingAttemptId(
     .limit(1)
 
   return data?.[0]?.id ?? null
+}
+
+async function findNextExerciseUrl(sessionId: string, topicId: string, currentExerciseId: string): Promise<string> {
+  const supabase = createSupabaseServerClient()
+  const { data: all } = await supabase
+    .from('exercises')
+    .select('id')
+    .eq('topic_id', topicId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+
+  const idx = all?.findIndex((e) => e.id === currentExerciseId) ?? -1
+  const next = idx !== -1 && all && idx < all.length - 1 ? all[idx + 1].id : null
+
+  return next
+    ? `/session/${sessionId}/exercise/${next}`
+    : `/session/${sessionId}/result`
 }
 
 export default async function ExercisePage({
@@ -48,8 +63,6 @@ export default async function ExercisePage({
     notFound()
   }
 
-  // Soal ini sudah pernah dijawab di sesi ini (mis. user tekan back)
-  // → arahkan ke feedback-nya, jangan biarkan jawab dua kali
   const existingId = await findExistingAttemptId(sessionId, exerciseId)
   if (existingId) {
     redirect(`/session/${sessionId}/exercise/${exerciseId}/feedback?attemptId=${existingId}`)
@@ -57,31 +70,35 @@ export default async function ExercisePage({
 
   const question = exercise.question
   const expectedAnswer = exercise.expected_answer
+  const topicId = exercise.topic_id
 
-  async function submitAnswer(formData: FormData) {
+  async function submitAnswer(
+    _prevState: SubmitResult | null,
+    formData: FormData
+  ): Promise<SubmitResult> {
     'use server'
 
     const raw = formData.get('answer')
     const userAnswer = typeof raw === 'string' ? raw.trim().slice(0, MAX_ANSWER_LENGTH) : ''
     const inputType = formData.get('input_type') === 'voice' ? 'voice' : 'text'
 
-    const backUrl = (extra: Record<string, string>) =>
-      `/session/${sessionId}/exercise/${exerciseId}?${new URLSearchParams(extra).toString()}`
-
     if (!userAnswer) {
-      redirect(backUrl({ error: 'empty' }))
+      return { kind: 'error', message: 'Jawaban tidak boleh kosong.', draft: '' }
     }
 
-    // Guard double-submit: kalau sudah ada attempt, pakai yang itu
     const already = await findExistingAttemptId(sessionId, exerciseId)
     if (already) {
-      redirect(`/session/${sessionId}/exercise/${exerciseId}/feedback?attemptId=${already}`)
+      return {
+        kind: 'duplicate',
+        nextUrl: `/session/${sessionId}/exercise/${exerciseId}/feedback?attemptId=${already}`,
+      }
     }
 
     let feedback: AIFeedback
+    let isExact = false
 
     if (isExactMatch(userAnswer, expectedAnswer)) {
-      // Persis sama dengan referensi → pasti benar, tidak perlu panggil AI
+      isExact = true
       feedback = {
         is_correct: true,
         user_answer: userAnswer,
@@ -92,19 +109,15 @@ export default async function ExercisePage({
       }
     } else {
       try {
-        const result = await aiService.evaluateAnswer(
-          question,
-          expectedAnswer,
-          userAnswer,
-          inputType
-        )
-        // Override: teks jawaban user harus persis input asli, bukan versi AI
+        const result = await aiService.evaluateAnswer(question, expectedAnswer, userAnswer, inputType)
         feedback = { ...result, user_answer: userAnswer }
       } catch (err) {
-        // AI gagal ≠ jawaban salah. Jangan simpan attempt;
-        // kembalikan ke form dengan jawaban tetap terisi
         console.error('evaluateAnswer gagal:', err)
-        redirect(backUrl({ error: 'ai', draft: userAnswer }))
+        return {
+          kind: 'error',
+          message: 'Sistem koreksi sedang bermasalah. Jawabanmu belum tersimpan, coba submit lagi.',
+          draft: userAnswer,
+        }
       }
     }
 
@@ -123,34 +136,34 @@ export default async function ExercisePage({
       .single()
 
     if (attemptError || !attempt) {
-      // 23505 = unique violation: request lain menang race, pakai attempt itu
       if (attemptError?.code === '23505') {
         const winner = await findExistingAttemptId(sessionId, exerciseId)
         if (winner) {
-          redirect(`/session/${sessionId}/exercise/${exerciseId}/feedback?attemptId=${winner}`)
+          return {
+            kind: 'duplicate',
+            nextUrl: `/session/${sessionId}/exercise/${exerciseId}/feedback?attemptId=${winner}`,
+          }
         }
       }
-      throw new Error('Gagal menyimpan jawaban')
+      return { kind: 'error', message: 'Gagal menyimpan jawaban. Coba lagi.', draft: userAnswer }
     }
 
-    redirect(`/session/${sessionId}/exercise/${exerciseId}/feedback?attemptId=${attempt.id}`)
+    const nextUrl = await findNextExerciseUrl(sessionId, topicId, exerciseId)
+
+    return isExact
+      ? { kind: 'exact', nextUrl }
+      : { kind: 'ai', feedback, nextUrl }
   }
 
   return (
-    <div>
-      <h1>{exercise.question}</h1>
-
-      {errorParam === 'ai' && (
-        <p role="alert">
-          Sistem koreksi sedang bermasalah. Jawabanmu belum tersimpan, coba submit lagi.
-        </p>
-      )}
-      {errorParam === 'empty' && <p role="alert">Jawaban tidak boleh kosong.</p>}
-
-      <form action={submitAnswer}>
-        <AnswerField defaultValue={draft ?? ''} maxLength={MAX_ANSWER_LENGTH} />
-        <SubmitButton />
-      </form>
+    <div className="flex-1 flex flex-col items-center justify-center bg-bg px-4 py-8 gap-6">
+      <ExerciseForm
+        action={submitAnswer}
+        question={question}
+        maxLength={MAX_ANSWER_LENGTH}
+        initialError={errorParam === 'ai' ? 'Sistem koreksi sedang bermasalah. Coba submit lagi.' : errorParam === 'empty' ? 'Jawaban tidak boleh kosong.' : null}
+        initialDraft={draft ?? ''}
+      />
     </div>
   )
 }

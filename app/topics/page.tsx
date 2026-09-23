@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { aiService } from '@/lib/ai/service'
 import { buildExercises } from '@/lib/exercises/build'
 import type { GeneratedLesson } from '@/lib/ai/types'
+import CreateTopicForm from '@/components/CreateTopicForm'
 
 // GLM bisa lambat, dan kalau OpenRouter gagal masih ada fallback ke z.ai
 export const maxDuration = 60
@@ -110,35 +111,32 @@ export default async function TopicSelectionPage({
     redirect(`/topics/${newTopic.id}`)
   }
 
-  return (
-    <div>
-      <h1>Pilih Topik</h1>
+ return (
+  <div className="flex-1 flex flex-col items-center bg-bg px-4 py-8 gap-8">
+    <h1 className="text-xl font-semibold text-text">Pilih Topik</h1>
 
-      {errorParam && ERROR_MESSAGES[errorParam] && (
-        <p role="alert">{ERROR_MESSAGES[errorParam]}</p>
-      )}
+    {errorParam && ERROR_MESSAGES[errorParam] && (
+      <p role="alert" className="text-sm text-error">{ERROR_MESSAGES[errorParam]}</p>
+    )}
 
-      <ul>
-        {topics?.map((topic) => (
-          <li key={topic.id}>
-            <Link href={`/topics/${topic.id}`}>
-              {topic.name}
-              {topic.description ? ` — ${topic.description}` : ''}
-            </Link>
-          </li>
-        ))}
-      </ul>
-
-      <form action={createTopic}>
-        <input
-          type="text"
-          name="topicName"
-          required
-          maxLength={MAX_TOPIC_LENGTH}
-          placeholder="Topik baru, misal: naik MRT"
-        />
-        <button type="submit">Buat Topik Baru</button>
-      </form>
+    <div className="w-full max-w-sm flex flex-col gap-2">
+      {topics?.map((topic) => (
+        <Link
+          key={topic.id}
+          href={`/topics/${topic.id}`}
+          className="rounded-xl border border-border bg-surface px-4 py-3 text-text hover:border-accent transition-colors"
+        >
+          {topic.name}
+          {topic.description && (
+            <span className="block text-sm text-text-muted mt-0.5">{topic.description}</span>
+          )}
+        </Link>
+      ))}
     </div>
-  )
+
+    <div className="w-full max-w-sm border-t border-border pt-6">
+      <CreateTopicForm action={createTopic} maxLength={MAX_TOPIC_LENGTH} />
+    </div>
+  </div>
+)
 }

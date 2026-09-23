@@ -14,8 +14,15 @@ function pickVoice(): SpeechSynthesisVoice | null {
     null
   )
 }
-
-export default function AudioButton({ text, label = '🔊' }: { text: string; label?: string }) {
+export default function AudioButton({
+  text,
+  label = '🔊',
+  className = '',
+}: {
+  text: string
+  label?: string
+  className?: string
+}) {
   const [supported, setSupported] = useState(false)
 
   useEffect(() => {
@@ -41,7 +48,12 @@ export default function AudioButton({ text, label = '🔊' }: { text: string; la
   }
 
   return (
-    <button type="button" onClick={play} aria-label="Dengarkan pengucapan">
+    <button
+      type="button"
+      onClick={play}
+      aria-label="Dengarkan pengucapan"
+      className={className}
+    >
       {label}
     </button>
   )

@@ -1,7 +1,6 @@
-import Link from 'next/link'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import AudioButton from '@/components/AudioButton'
+import LearningMaterialClient from './LearningMaterialClient'
 
 export default async function LearningMaterialPage({
   params,
@@ -28,36 +27,14 @@ export default async function LearningMaterialPage({
     .order('created_at', { ascending: true })
 
   if (vocabError) {
-    return <div>Gagal memuat kosakata: {vocabError.message}</div>
+    return <div className="p-4 text-error">Gagal memuat kosakata: {vocabError.message}</div>
   }
 
   return (
-    <div>
-      <h1>{topic.name}</h1>
-      <p>{topic.description}</p>
-
-      <h2>Kosakata</h2>
-      <ul>
-        {vocabulary?.map((v) => (
-          <li key={v.id}>
-            <strong>{v.hanzi}</strong> ({v.pinyin}) <AudioButton text={v.hanzi} /> — {v.meaning}
-            {v.example_sentence && (
-              <p>
-                {v.example_sentence} <AudioButton text={v.example_sentence} />
-                {v.example_pinyin && ` (${v.example_pinyin})`}
-                {v.example_translation && (
-                  <>
-                    <br />
-                    <small>{v.example_translation}</small>
-                  </>
-                )}
-              </p>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      <Link href={`/topics/${topicId}/session`}>Mulai Latihan</Link>
-    </div>
+    <LearningMaterialClient
+      topicName={topic.name}
+      topicId={topicId}
+      vocabulary={vocabulary ?? []}
+    />
   )
 }

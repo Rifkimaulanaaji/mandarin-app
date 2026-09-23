@@ -17,9 +17,9 @@ export async function callOpenAICompatible({
   apiKey,
   model,
   prompt,
-  maxTokens = 1500,
+  maxTokens = 1200,
   timeoutMs = 20_000,
-  disableReasoning = false,
+  disableReasoning = true,
 }: CallOptions): Promise<string> {
   // maxRetries: 0 → retry ditangani service.ts, bukan SDK (default SDK: 2x retry)
   const client = new OpenAI({ apiKey, baseURL, timeout: timeoutMs, maxRetries: 0 })
@@ -34,22 +34,28 @@ export async function callOpenAICompatible({
     }
   }
 
-  const response = await client.chat.completions.create({
+    const response = await client.chat.completions.create({
     model,
     messages: [{ role: 'user', content: prompt }],
     max_tokens: maxTokens,
+    ...(disableReasoning && baseURL.includes('groq.com') ? { reasoning_effort: 'low' } : {}),
     ...extraBody,
   } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming)
+
+  console.log(`[${model}] usage:`, JSON.stringify(response.usage))
 
   const choice = response.choices[0]
   const content = choice?.message?.content
 
   if (!content) {
-    // Ringkas saja, jangan dump seluruh response ke log
     throw new Error(
       `AI provider returned empty content (finish_reason: ${choice?.finish_reason ?? 'unknown'}, model: ${model})`
     )
   }
 
-  return content.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+  return content
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/^```json\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim()
 }

@@ -15,9 +15,11 @@ function pickMimeType(): string {
 export default function AnswerField({
   defaultValue = '',
   maxLength,
+  onChange,
 }: {
   defaultValue?: string
   maxLength: number
+  onChange?: (value: string) => void
 }) {
   const [value, setValue] = useState(defaultValue)
   const [inputType, setInputType] = useState<'text' | 'voice'>('text')
@@ -55,8 +57,10 @@ export default function AnswerField({
         return
       }
 
-      setValue(String(data.text).slice(0, maxLength))
+      const text = String(data.text).slice(0, maxLength)
+      setValue(text)
       setInputType('voice')
+      onChange?.(text)
     } catch {
       setError('Koneksi bermasalah saat mengirim rekaman. Coba lagi atau ketik jawabanmu.')
     } finally {
@@ -122,6 +126,7 @@ export default function AnswerField({
         onChange={(e) => {
           setValue(e.target.value)
           setInputType('text') // diedit manual → dianggap ketikan
+          onChange?.(e.target.value)
         }}
         placeholder="Ketik atau rekam jawabanmu..."
       />
@@ -156,4 +161,5 @@ export default function AnswerField({
       {error && <p role="alert">{error}</p>}
     </div>
   )
+  
 }
