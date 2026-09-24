@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import BackButton from '@/components/BackButton'
