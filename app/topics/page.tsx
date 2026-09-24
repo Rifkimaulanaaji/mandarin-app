@@ -3,11 +3,13 @@ import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { aiService } from '@/lib/ai/service'
 import { buildExercises } from '@/lib/exercises/build'
+import { checkAndIncrement, limitMessage } from '@/lib/rate-limit'
 import type { GeneratedLesson } from '@/lib/ai/types'
 import CreateTopicForm from '@/components/CreateTopicForm'
+import BackButton from '@/components/BackButton'
+import DeleteTopicButton from '@/components/DeleteTopicButton'
 
-// GLM bisa lambat, dan kalau OpenRouter gagal masih ada fallback ke z.ai
-export const maxDuration = 60
+export const maxDuration = 120
 
 const MAX_TOPIC_LENGTH = 60
 const DIFFICULTY = 'beginner'
@@ -16,11 +18,12 @@ const ERROR_MESSAGES: Record<string, string> = {
   empty: 'Nama topik tidak boleh kosong.',
   ai: 'Gagal membuat materi dari AI. Belum ada yang tersimpan, coba lagi.',
   db: 'Gagal menyimpan topik ke database. Belum ada yang tersimpan, coba lagi.',
+  limit: limitMessage('generate_lesson'),
 }
 
-// Tabel tanpa cascade: hapus anak dulu, baru topik
 async function cleanupTopic(topicId: string) {
   const supabase = createSupabaseServerClient()
+  // sessions & attempts SENGAJA tidak dihapus — snapshot bikin mereka independen dari topic
   await supabase.from('exercises').delete().eq('topic_id', topicId)
   await supabase.from('vocabulary').delete().eq('topic_id', topicId)
   await supabase.from('topics').delete().eq('id', topicId)
@@ -53,7 +56,11 @@ export default async function TopicSelectionPage({
       redirect('/topics?error=empty')
     }
 
-    // 1) Panggil AI DULU. Kalau gagal, belum ada yang ditulis ke DB.
+    const allowed = await checkAndIncrement('generate_lesson')
+    if (!allowed) {
+      redirect('/topics?error=limit')
+    }
+
     let lesson: GeneratedLesson
     try {
       lesson = await aiService.generateLesson(topicName, DIFFICULTY)
@@ -66,12 +73,11 @@ export default async function TopicSelectionPage({
       redirect('/topics?error=ai')
     }
 
-    // 2) Baru tulis ke DB: topics → vocabulary → exercises
     const supabase = createSupabaseServerClient()
 
     const { data: newTopic, error: topicError } = await supabase
       .from('topics')
-      .insert({ name: topicName, difficulty: DIFFICULTY })
+      .insert({ name: lesson.title, description: lesson.description, difficulty: DIFFICULTY })
       .select('id')
       .single()
 
@@ -111,32 +117,53 @@ export default async function TopicSelectionPage({
     redirect(`/topics/${newTopic.id}`)
   }
 
- return (
-  <div className="flex-1 flex flex-col items-center bg-bg px-4 py-8 gap-8">
-    <h1 className="text-xl font-semibold text-text">Pilih Topik</h1>
+  async function deleteTopic(formData: FormData) {
+    'use server'
+    const topicId = formData.get('topicId')
+    if (typeof topicId === 'string') {
+      await cleanupTopic(topicId)
+    }
+    redirect('/topics')
+  }
 
-    {errorParam && ERROR_MESSAGES[errorParam] && (
-      <p role="alert" className="text-sm text-error">{ERROR_MESSAGES[errorParam]}</p>
-    )}
+  return (
+    <div className="flex flex-col h-screen bg-bg">
+          <BackButton href="/" />
+      <div className="flex-1 overflow-y-auto px-4 pt-8 pb-40">
+        <h1 className="text-xl font-semibold text-text text-center mb-6">Pilih Topik</h1>
 
-    <div className="w-full max-w-sm flex flex-col gap-2">
-      {topics?.map((topic) => (
-        <Link
-          key={topic.id}
-          href={`/topics/${topic.id}`}
-          className="rounded-xl border border-border bg-surface px-4 py-3 text-text hover:border-accent transition-colors"
-        >
-          {topic.name}
-          {topic.description && (
-            <span className="block text-sm text-text-muted mt-0.5">{topic.description}</span>
-          )}
-        </Link>
-      ))}
+        {errorParam && ERROR_MESSAGES[errorParam] && (
+          <p role="alert" className="text-sm text-error text-center mb-4">
+            {ERROR_MESSAGES[errorParam]}
+          </p>
+        )}
+
+        <div className="w-full max-w-sm mx-auto flex flex-col gap-2">
+          {topics?.map((topic) => (
+            <div
+              key={topic.id}
+              className="rounded-xl border border-border bg-surface px-4 py-3 flex items-center justify-between gap-2"
+            >
+              <Link href={`/topics/${topic.id}`} className="flex-1 min-w-0">
+                <p className="text-text truncate">{topic.name}</p>
+                {topic.description && (
+                  <p className="text-sm text-text-muted mt-0.5 truncate">{topic.description}</p>
+                )}
+              </Link>
+              <form action={deleteTopic}>
+                <input type="hidden" name="topicId" value={topic.id} />
+                <DeleteTopicButton  />
+              </form>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 bg-bg border-t border-border px-4 py-4">
+        <div className="max-w-sm mx-auto">
+          <CreateTopicForm action={createTopic} maxLength={MAX_TOPIC_LENGTH} />
+        </div>
+      </div>
     </div>
-
-    <div className="w-full max-w-sm border-t border-border pt-6">
-      <CreateTopicForm action={createTopic} maxLength={MAX_TOPIC_LENGTH} />
-    </div>
-  </div>
-)
+  )
 }

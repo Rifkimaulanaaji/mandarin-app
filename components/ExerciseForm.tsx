@@ -31,12 +31,14 @@ function SubmitButton() {
 export default function ExerciseForm({
     action,
     question,
+    keyterm,
     maxLength,
     initialError,
     initialDraft,
 }: {
     action: (prev: SubmitResult | null, formData: FormData) => Promise<SubmitResult>
     question: string
+    keyterm?: string
     maxLength: number
     initialError: string | null
     initialDraft: string
@@ -81,6 +83,9 @@ export default function ExerciseForm({
                     </p>
                     <p className="mt-2 text-sm text-text-muted">
                         Jawaban yang benar: <span className="text-text">{feedback.corrected_answer}</span>
+                        {feedback.corrected_answer_pinyin && (
+                            <span className="text-text-muted"> ({feedback.corrected_answer_pinyin})</span>
+                        )}
                     </p>
                     <p className="mt-2 text-sm">{feedback.explanation}</p>
 
@@ -118,6 +123,7 @@ export default function ExerciseForm({
         <FormBody
             action={formAction}
             question={question}
+            keyterm={keyterm}
             maxLength={maxLength}
             errorMessage={errorMessage}
             draft={state?.kind === 'error' ? state.draft : draft}
@@ -129,6 +135,7 @@ export default function ExerciseForm({
 function FormBody({
     action,
     question,
+    keyterm,
     maxLength,
     errorMessage,
     draft,
@@ -136,6 +143,7 @@ function FormBody({
 }: {
     action: (formData: FormData) => void
     question: string
+    keyterm?: string
     maxLength: number
     errorMessage: string | null
     draft: string
@@ -156,7 +164,12 @@ function FormBody({
             )}
 
             <div className="w-full">
-                <AnswerField defaultValue={draft} maxLength={maxLength} onChange={onDraftChange} />
+                <AnswerField
+                    defaultValue={draft}
+                    maxLength={maxLength}
+                    onChange={onDraftChange}
+                    keyterm={keyterm}
+                />
             </div>
 
             <SubmitButton />

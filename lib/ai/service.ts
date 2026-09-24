@@ -30,6 +30,11 @@ const PROVIDERS = {
     key: () => process.env.CLOUDFLARE_AI_KEY,
     model: '@cf/google/gemma-3-12b-it', // cek nama model persis di dashboard Cloudflare
   },
+  gemini: {
+  baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  key: () => process.env.GEMINI_API_KEY,
+  model: 'gemini-2.5-flash',
+},
 }
 type ProviderName = keyof typeof PROVIDERS
 
@@ -94,18 +99,37 @@ async function callAndValidate<T>(opts: {
   throw lastError
 }
 
+
 async function generateLesson(topic: string, difficulty: string): Promise<GeneratedLesson> {
-  return callAndValidate({
-    provider: 'zai',
-    prompt: buildLessonPrompt(topic, difficulty),
-    schema: generatedLessonSchema,
-    context: 'generateLesson via z.ai',
-    attempts: 2,
-    maxTokens: LESSON_THINKING ? 8000 : 4000,
-    timeoutMs: LESSON_THINKING ? 90_000 : 25_000,
-    disableReasoning: !LESSON_THINKING,
-  })
+  const prompt = buildLessonPrompt(topic, difficulty)
+
+  try {
+    return await callAndValidate({
+      provider: 'zai',
+      prompt,
+      schema: generatedLessonSchema,
+      context: 'generateLesson via z.ai',
+      attempts: 2,
+      maxTokens: LESSON_THINKING ? 8000 : 4000,
+      timeoutMs: LESSON_THINKING ? 90_000 : 25_000,
+      disableReasoning: !LESSON_THINKING,
+    })
+  } catch (err) {
+    console.error('z.ai gagal total, fallback ke Gemini:', err instanceof Error ? err.message : err)
+
+    return await callAndValidate({
+      provider: 'gemini',
+      prompt,
+      schema: generatedLessonSchema,
+      context: 'generateLesson via gemini fallback',
+      attempts: 2,
+      maxTokens: 4000,
+      timeoutMs: 25_000,
+      disableReasoning: true,
+    })
+  }
 }
+
 
 async function evaluateAnswer(
   question: string,
@@ -113,16 +137,33 @@ async function evaluateAnswer(
   userAnswer: string,
   inputType: 'text' | 'voice' = 'text'
 ): Promise<AIFeedback> {
-  return callAndValidate({
-    provider: 'groq', // ganti ke 'claude' atau 'cloudflare' untuk dibandingkan
-    prompt: buildEvaluatePrompt(question, expectedAnswer, userAnswer, inputType),
-    schema: aiFeedbackSchema,
-    context: 'evaluateAnswer via groq',
-    attempts: 2,
-    maxTokens: 800,
-    timeoutMs: 15_000,
-    disableReasoning: false,
-  })
+  const prompt = buildEvaluatePrompt(question, expectedAnswer, userAnswer, inputType)
+
+  try {
+    return await callAndValidate({
+      provider: 'groq',
+      prompt,
+      schema: aiFeedbackSchema,
+      context: 'evaluateAnswer via groq',
+      attempts: 2,
+      maxTokens: 800,
+      timeoutMs: 15_000,
+      disableReasoning: false,
+    })
+  } catch (err) {
+    console.error('Groq gagal total, fallback ke Gemini:', err instanceof Error ? err.message : err)
+
+    return await callAndValidate({
+      provider: 'gemini',
+      prompt,
+      schema: aiFeedbackSchema,
+      context: 'evaluateAnswer via gemini fallback',
+      attempts: 2,
+      maxTokens: 800,
+      timeoutMs: 15_000,
+      disableReasoning: true,
+    })
+  }
 }
 
 export const aiService: AIService = {

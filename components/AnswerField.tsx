@@ -16,10 +16,12 @@ export default function AnswerField({
   defaultValue = '',
   maxLength,
   onChange,
+  keyterm,
 }: {
   defaultValue?: string
   maxLength: number
   onChange?: (value: string) => void
+  keyterm?: string
 }) {
   const [value, setValue] = useState(defaultValue)
   const [inputType, setInputType] = useState<'text' | 'voice'>('text')
@@ -48,6 +50,7 @@ export default function AnswerField({
       const ext = mimeType.includes('mp4') ? 'mp4' : 'webm'
       const body = new FormData()
       body.append('audio', blob, `rekaman.${ext}`)
+      if (keyterm) body.append('keyterm', keyterm)
 
       const res = await fetch('/api/speech/transcribe', { method: 'POST', body })
       const data = await res.json().catch(() => ({}))
@@ -114,9 +117,9 @@ export default function AnswerField({
   function stop() {
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
   }
-
-  return (
-    <div>
+return (
+  <div className="w-full flex flex-col gap-2">
+    <div className="flex items-center gap-2">
       <input
         type="text"
         name="answer"
@@ -125,41 +128,63 @@ export default function AnswerField({
         value={value}
         onChange={(e) => {
           setValue(e.target.value)
-          setInputType('text') // diedit manual → dianggap ketikan
+          setInputType('text')
           onChange?.(e.target.value)
         }}
         placeholder="Ketik atau rekam jawabanmu..."
+        className="flex-1 rounded-xl border border-border bg-surface text-text px-4 py-3 placeholder:text-text-muted focus:outline-none focus:border-accent"
       />
       <input type="hidden" name="input_type" value={inputType} />
 
       {canRecord && (
         <>
           {status === 'idle' && (
-            <button type="button" onClick={start}>
-              🎤 Rekam
+            <button
+              type="button"
+              onClick={start}
+              aria-label="Rekam jawaban suara"
+              className="shrink-0 w-11 h-11 rounded-full bg-accent text-accent-text flex items-center justify-center text-lg"
+            >
+              🎤
             </button>
           )}
           {status === 'recording' && (
-            <button type="button" onClick={stop}>
-              ⏹ Selesai
+            <button
+              type="button"
+              onClick={stop}
+              aria-label="Selesai rekam"
+              className="shrink-0 w-11 h-11 rounded-full bg-error text-accent-text flex items-center justify-center text-lg animate-pulse"
+            >
+              ⏹
             </button>
           )}
           {status === 'uploading' && (
-            <button type="button" disabled>
-              Mengenali suara…
+            <button
+              type="button"
+              disabled
+              aria-label="Mengenali suara"
+              className="shrink-0 w-11 h-11 rounded-full border border-border text-text-muted flex items-center justify-center text-sm"
+            >
+              ⏳
             </button>
           )}
         </>
       )}
-
-      {status === 'recording' && <p>Merekam… (maks {MAX_SECONDS} detik)</p>}
-      {inputType === 'voice' && status === 'idle' && (
-        <p>
-          <small>Terdeteksi dari suaramu. Cek dulu, edit kalau ada yang salah dengar.</small>
-        </p>
-      )}
-      {error && <p role="alert">{error}</p>}
     </div>
-  )
-  
-}
+
+    {status === 'recording' && (
+      <p className="text-sm text-text-muted text-center">Merekam… (maks {MAX_SECONDS} detik)</p>
+    )}
+    {inputType === 'voice' && status === 'idle' && (
+      <p className="text-sm text-text-muted text-center">
+        Terdeteksi dari suaramu. Cek dulu, edit kalau ada yang salah dengar.
+      </p>
+    )}
+    {error && (
+      <p role="alert" className="text-sm text-error text-center">
+        {error}
+      </p>
+    )}
+  </div>
+)
+} 

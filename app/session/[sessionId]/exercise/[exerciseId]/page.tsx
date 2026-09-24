@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { aiService } from '@/lib/ai/service'
 import { isExactMatch } from '@/lib/answer-match'
+import { checkAndIncrement, limitMessage } from '@/lib/rate-limit'
 import type { AIFeedback } from '@/lib/ai/types'
 import ExerciseForm, { type SubmitResult } from '@/components/ExerciseForm'
 
@@ -71,6 +72,7 @@ export default async function ExercisePage({
   const question = exercise.question
   const expectedAnswer = exercise.expected_answer
   const topicId = exercise.topic_id
+  const metadata = exercise.metadata as { hanzi?: string; pinyin?: string | null } | null
 
   async function submitAnswer(
     _prevState: SubmitResult | null,
@@ -103,11 +105,17 @@ export default async function ExercisePage({
         is_correct: true,
         user_answer: userAnswer,
         corrected_answer: expectedAnswer,
+        corrected_answer_pinyin: metadata?.pinyin ?? null,
         mistakes: [],
         alternative_answers: [],
         explanation: 'Jawabanmu tepat!',
       }
     } else {
+      const allowed = await checkAndIncrement('evaluate')
+      if (!allowed) {
+        return { kind: 'error', message: limitMessage('evaluate'), draft: userAnswer }
+      }
+
       try {
         const result = await aiService.evaluateAnswer(question, expectedAnswer, userAnswer, inputType)
         feedback = { ...result, user_answer: userAnswer }
@@ -131,6 +139,7 @@ export default async function ExercisePage({
         input_type: inputType,
         is_correct: feedback.is_correct,
         ai_feedback: feedback,
+        question_snapshot: question,
       })
       .select('id')
       .single()
@@ -160,6 +169,7 @@ export default async function ExercisePage({
       <ExerciseForm
         action={submitAnswer}
         question={question}
+        keyterm={metadata?.hanzi}
         maxLength={MAX_ANSWER_LENGTH}
         initialError={errorParam === 'ai' ? 'Sistem koreksi sedang bermasalah. Coba submit lagi.' : errorParam === 'empty' ? 'Jawaban tidak boleh kosong.' : null}
         initialDraft={draft ?? ''}

@@ -9,10 +9,10 @@ export default async function StartSessionPage({
   const { topicId } = await params
   const supabase = createSupabaseServerClient()
 
-  // 1. Cek topic-nya ada
+  // 1. Cek topic-nya ada, sekalian ambil nama buat snapshot
   const { data: topic, error: topicError } = await supabase
     .from('topics')
-    .select('id')
+    .select('id, name')
     .eq('id', topicId)
     .single()
 
@@ -20,23 +20,23 @@ export default async function StartSessionPage({
     notFound()
   }
 
-const { data: firstExercise, error: exerciseError } = await supabase
-  .from('exercises')
-  .select('id')
-  .eq('topic_id', topicId)
-  .order('created_at', { ascending: true })
-  .order('id', { ascending: true })
-  .limit(1)
-  .single()
+  const { data: firstExercise, error: exerciseError } = await supabase
+    .from('exercises')
+    .select('id')
+    .eq('topic_id', topicId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(1)
+    .single()
 
   if (exerciseError || !firstExercise) {
     return <div>Topik ini belum punya soal latihan.</div>
   }
 
-  // 3. Bikin session baru
+  // 3. Bikin session baru, simpan snapshot nama topik
   const { data: session, error: sessionError } = await supabase
     .from('sessions')
-    .insert({ topic_id: topicId })
+    .insert({ topic_id: topicId, topic_name_snapshot: topic.name })
     .select('id')
     .single()
 

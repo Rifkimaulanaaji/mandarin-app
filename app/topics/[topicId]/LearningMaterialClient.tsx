@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import VocabFlashcards from '@/components/VocabFlashcards'
+import BackButton from '@/components/BackButton'
 
 type Vocab = {
   id: string
@@ -28,6 +29,7 @@ export default function LearningMaterialClient({
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-bg px-4 py-8 gap-6">
+            <BackButton href="/topics" />
       {!finished ? (
         <>
           <div className="text-center">

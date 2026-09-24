@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { transcribeAudio } from '@/lib/speech/transcribe'
+import { checkAndIncrement, limitMessage } from '@/lib/rate-limit'
 
 export const maxDuration = 30
 
@@ -9,6 +10,8 @@ const MIN_BYTES = 1000 // di bawah ini hampir pasti kosong/terpotong
 export async function POST(req: Request) {
   const form = await req.formData().catch(() => null)
   const file = form?.get('audio')
+  const keytermRaw = form?.get('keyterm')
+  const keyterms = typeof keytermRaw === 'string' && keytermRaw ? [keytermRaw] : undefined
 
   if (!(file instanceof File) || !file.type.startsWith('audio/')) {
     return NextResponse.json({ error: 'File audio tidak valid.' }, { status: 400 })
@@ -20,8 +23,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Rekaman terlalu panjang.' }, { status: 413 })
   }
 
+  const allowed = await checkAndIncrement('transcribe')
+  if (!allowed) {
+    return NextResponse.json({ error: limitMessage('transcribe') }, { status: 429 })
+  }
+
   try {
-    const text = await transcribeAudio(file)
+    const text = await transcribeAudio(file, keyterms)
 
     if (!text) {
       return NextResponse.json({ error: 'Tidak ada suara yang terdeteksi.' }, { status: 422 })

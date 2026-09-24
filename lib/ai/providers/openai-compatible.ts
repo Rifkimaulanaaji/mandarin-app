@@ -42,8 +42,6 @@ export async function callOpenAICompatible({
     ...extraBody,
   } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming)
 
-  console.log(`[${model}] usage:`, JSON.stringify(response.usage))
-
   const choice = response.choices[0]
   const content = choice?.message?.content
 
